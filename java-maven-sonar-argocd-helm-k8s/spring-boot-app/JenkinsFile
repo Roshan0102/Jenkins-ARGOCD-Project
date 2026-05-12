@@ -65,4 +65,11 @@ pipeline {
         }
     }
   }
+     post {
+        always {
+            // This runs as the root user inside the container, 
+            // so it CAN delete the files it created.
+            sh 'rm -rf java-maven-sonar-argocd-helm-k8s/spring-boot-app/target'
+        }
+    }
 }
