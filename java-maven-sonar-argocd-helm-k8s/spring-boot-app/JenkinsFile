@@ -11,7 +11,7 @@ pipeline {
 
     stage('Checkout') {
       steps {
-        sh 'echo "Repository checkout completed"'
+        sh 'echo "Repository checkout completed yes"'
       }
     }
 
