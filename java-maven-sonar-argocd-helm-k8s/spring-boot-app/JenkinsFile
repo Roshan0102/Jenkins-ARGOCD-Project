@@ -1,90 +1,123 @@
 pipeline {
+
   agent {
     docker {
       image 'roshan033/maven-jdk17-docker:v1'
-      args '--user root -v /var/run/docker.sock:/var/run/docker.sock' // mount Docker socket to access the host's Docker daemon
+      args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
     }
   }
+
   stages {
+
     stage('Checkout') {
       steps {
         sh 'echo passed yes'
-        //git branch: 'main', url: 'https://github.com/iam-veeramalla/Jenkins-Zero-To-Hero.git'
       }
     }
+
     stage('Build and Test') {
       steps {
         sh 'ls -ltr'
-        // build the project and create a JAR file
-        sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
+
+        sh '''
+          cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+          mvn clean package
+        '''
       }
     }
+
     stage('Static Code Analysis') {
+
       environment {
         SONAR_URL = "http://54.85.38.216:9000/"
       }
+
       steps {
+
         withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-          sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=${SONAR_URL}'
+
+          sh '''
+            cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+
+            mvn sonar:sonar \
+            -Dsonar.login=$SONAR_AUTH_TOKEN \
+            -Dsonar.host.url=${SONAR_URL}
+          '''
         }
       }
     }
+
     stage('Build and Push Docker Image') {
+
       environment {
         DOCKER_IMAGE = "roshan033/ultimate-cicd:${BUILD_NUMBER}"
-        // DOCKERFILE_LOCATION = "java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
         REGISTRY_CREDENTIALS = credentials('docker-cred')
       }
+
       steps {
+
         script {
-            sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
-            def dockerImage = docker.image("${DOCKER_IMAGE}")
-            docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
-                dockerImage.push()
-            }
+
+          sh '''
+            cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+
+            docker build -t ${DOCKER_IMAGE} .
+          '''
+
+          def dockerImage = docker.image("${DOCKER_IMAGE}")
+
+          docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
+
+            dockerImage.push()
+
+          }
         }
       }
     }
+
     stage('Update Deployment File') {
 
-    environment {
+      environment {
         GIT_REPO_NAME = "Jenkins-ARGOCD-Project-Manifest"
         GIT_USER_NAME = "roshan0102"
-    }
+      }
 
-    steps {
+      steps {
 
         withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
 
-            sh '''
+          sh '''
 
-                rm -rf manifests-repo
+            rm -rf manifests-repo
 
-                git clone https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git manifests-repo
+            git clone https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git manifests-repo
 
-                cd manifests-repo
+            cd manifests-repo
 
-                git config user.email "roshanjustinjr2002@gmail.com"
-                git config user.name "roshan0102"
+            git config user.email "roshanjustinjr2002@gmail.com"
+            git config user.name "roshan0102"
 
-                sed -i "s|image: roshan033/ultimate-cicd:.*|image: roshan033/ultimate-cicd:${BUILD_NUMBER}|g" \
-                spring-boot-app-manifests/deployment.yml
+            sed -i "s|image: roshan033/ultimate-cicd:.*|image: roshan033/ultimate-cicd:${BUILD_NUMBER}|g" \
+            spring-boot-app-manifests/deployment.yml
 
-                git add spring-boot-app-manifests/deployment.yml
+            git add spring-boot-app-manifests/deployment.yml
 
-                git commit -m "Update deployment image to version ${BUILD_NUMBER}" || echo "No changes to commit"
+            git commit -m "Update deployment image to version ${BUILD_NUMBER}" || echo "No changes to commit"
 
-                git push origin main
+            git push origin main
 
-            '''
+          '''
         }
+      }
     }
-}
-     post {
-        always {
-            // This runs as the root user inside the container, 
-            // so it CAN delete the files it created.
-            sh 'rm -rf java-maven-sonar-argocd-helm-k8s/spring-boot-app/target'
-        }
+  }
+
+  post {
+
+    always {
+
+      sh 'rm -rf java-maven-sonar-argocd-helm-k8s/spring-boot-app/target'
+
     }
+  }
 }
